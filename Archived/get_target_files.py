@@ -5,7 +5,7 @@ links_arr: list[str] = []
 
 start = time.perf_counter()
 
-with open("links_to_files.txt", mode="r", encoding="utf-8") as input_f:
+with open("../links_to_files.txt", mode="r", encoding="utf-8") as input_f:
     row = input_f.readline()
 
 
@@ -14,7 +14,7 @@ with open("links_to_files.txt", mode="r", encoding="utf-8") as input_f:
         row = input_f.readline()
 
 
-target_f = open("target_projects.txt", mode="w", encoding="UTF-8")
+target_f = open("../target_projects.txt", mode="w", encoding="UTF-8")
 error_links: list[str] = []
 targeted_links_counter: int = 0
 for link in links_arr:

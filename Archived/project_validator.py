@@ -1,23 +1,18 @@
-from time import perf_counter
-
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.support import expected_conditions as EC
 import time
 import re
-import os
 
 from selenium.webdriver.support.wait import WebDriverWait
 
-from get_project_links import login, is_login_page
+from Archived.get_project_links import login, is_login_page
 
 if __name__ == "__main__":
     start = time.perf_counter()
 
     links: list[str] = []
-    with open("links.txt", mode='r', encoding="UTF-8") as links_file:
+    with open("../links_with_dublicate_filter.txt", mode='r', encoding="UTF-8") as links_file:
         row = links_file.readline()
         while row:
             links.append(row.strip())
@@ -34,7 +29,7 @@ if __name__ == "__main__":
 
     file_links: list[str] = []
 
-    with open("links_to_files.txt", mode="w", encoding="UTF-8") as output_f:
+    with open("../links_to_files.txt", mode="w", encoding="UTF-8") as output_f:
 
         for link in links:
             driver.get(link)
