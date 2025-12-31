@@ -1,16 +1,9 @@
-# new specs!!!
-now previous version in "Archived" directory (not all of them is working, but I saved it by the way)
+# Parser
+Парсер имеет две функции:
+1) Сбор ссылок на **проекты**, в которых содержатся файлы (модели) .engee в текстовый `checked_projects.txt`
+2) Сбор ссылок на **файлы** (модели) .engee в текстовый `caught_files.txt`
 
-# Current version
-Now there little async parser to catching project from Engee gitlab that have ".engee" files in repo by GitLab API.
-For run it, just need to start "async_parser.py" without any changes. Result file - "projects_links.txt".
+При запуске `async_parser.py` предложен выбор соответствующего режима.
 
-# Previois (archived) version
-## This is lite parser for catching some projects from engee gitlab.
-
-# Steps for work with previos version
-1. Add email and password (i did this with logining) into login function (get_project_links.py)
-2. Run get_project_links.py. This file creates "links.txt" with links to projects, thats contains each of .ngscript and .engee files 
-3. Next step - run "project_validator.py". Its creates new "links_to_file.txt" with links to .ngscript files (in raw format)
-4. Run "get_target_files.py". It will catch all files, where contains "add_block" method. Thats main property to catch projects with Public Model Control methods
-5. In "target_projects.txt" will be links to raw-format files from projects.
+# Downloader
+Позволяет скачать все модели, ссылки на которые содержатся в файле `caught_files.txt`. После установки все модели сохраняются в директории `/models`
