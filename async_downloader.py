@@ -12,7 +12,7 @@ class Downloader:
             print("'caught_files.txt' file not found.")
             exit()
 
-        if not exists("models.txt"):
+        if not exists("models"):
             mkdir("models/")
 
         with open("caught_files.txt", "r", encoding="utf-8") as f:
