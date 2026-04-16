@@ -4,7 +4,7 @@ import aiohttp
 import asyncio
 import requests
 
-from typing import Optional
+from typing import Optional, Callable
 
 from collections import deque
 
@@ -13,29 +13,53 @@ class WorkType(Enum):
     CATCH_FILES = "CATCH_FILES"
 
 class Parser:
-    def __init__(self, work_type: WorkType, max_concurrent_requests: int = 50) -> None:
+    def __init__(
+        self,
+        work_type: WorkType,
+        max_concurrent_requests: int = 50,
+    ) -> None:
         """
         :param work_type: Режим работы
         :param max_concurrent_requests: максимальное количество одновременных запросов
         """
         self.work_type: WorkType = work_type
         self.__max_concurrent_requests = max_concurrent_requests
+        self._on_progress: Callable[[int, int], None] = None
 
         self.__semaphore: Optional[asyncio.Semaphore] = None
         self.__aio_connector: Optional[aiohttp.TCPConnector] = None
 
-        self.__parsed_projects: list[str] = []
+        self.__parsed_links: list[str] = []
 
         if self.work_type == WorkType.CHECK_PROJECTS:
             self.__file_name: str = "../checked_projects.txt"
         elif self.work_type == WorkType.CATCH_FILES:
             self.__file_name: str = "../caught_files.txt"
 
+    def set_on_progress(self, on_progress: Callable) -> None:
+        """
+        Устанавливает значение поля `_on_progress`, хранит функцию обновления прогресса
+        :param on_progress: функция обновления прогресса
+        """
+        self._on_progress = on_progress
+
+    def get_links_count(self) -> int:
+        """
+        :return: Возвращает количество захваченных проектов.
+        """
+        return len(self.__parsed_links)
+
     def get_last_project_id(self) -> int:
         """
         Возвращает id последнего проекта на Engee gitlab.
         :return: id последнего проекта"""
         return requests.get("https://git.engee.com/api/v4/projects?per_page=1&order_by=id&sort=desc").json()[0].get("id")
+
+    def get_project_links(self) -> list[str]:
+        """
+        :return: Возвращает лист с захваченными ссылками
+        """
+        return self.__parsed_links
 
     async def __get_response(self, session: aiohttp.ClientSession, url: str) -> Optional[dict]:
         """
@@ -52,6 +76,18 @@ class Parser:
                 if response.status == 200:
                     return await response.json()
                 return None
+
+    async def _emit_progress(self, advance: int = 1) -> None:
+        """
+        Вызывает функцию продвижения прогресса для прогресс-бара (если поле заполнено).
+        :param advance: Значение продвижения (законченных задач)
+        """
+        if self._on_progress is None:
+            return
+
+        result = self._on_progress(advance)
+        if asyncio.iscoroutine(result):
+            await result
 
     async def catch_all_engee_models(
         self,
@@ -162,34 +198,31 @@ class Parser:
 
         return None
 
-    async def main(self) -> bool:
+    async def main(self) -> list[str]:
         """
         Точка входа. Создаёт клиент для запросов и раздаёт задания, записывая результаты задач асинхронно.
-        :return: True, если ошибок не возникло; False, иначе
+        :return: Лист захваченных ссылок
         """
         aio_connector = aiohttp.TCPConnector(limit=self.__max_concurrent_requests)
         self.__semaphore = asyncio.Semaphore(self.__max_concurrent_requests)
         async with aiohttp.ClientSession(connector=aio_connector) as session:
             tasks = [
                 asyncio.create_task(self.fetch_project(session, project_id))
-                for project_id in range(0, self.get_last_project_id() + 1)
+                for project_id in range(0, self.get_last_project_id())
             ]
 
             with open(self.__file_name, mode="w", encoding="utf-8") as output_file:
                 for task in asyncio.as_completed(tasks):
                     urls = await task
-                    if not urls:
-                        continue
+                    if urls:
+                        self.__parsed_links.extend(urls)
+                        for url in urls:
+                            output_file.write(f"{url}\n")
+                        output_file.flush()
 
-                    self.__parsed_projects.extend(urls)
-                    for url in urls:
-                        output_file.write(f"{url}\n")
-                    output_file.flush()
-        return True
+                    await self._emit_progress(1)
 
-    def get_links_count(self) -> int:
-        """Возвращает количество собранных проектов."""
-        return len(self.__parsed_projects)
+        return self.get_project_links()
 
 
 if __name__ == "__main__":
