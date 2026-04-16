@@ -7,14 +7,14 @@ import asyncio
 
 class Downloader:
     def __init__(self):
-        if not exists("caught_files.txt"):
+        if not exists("../caught_files.txt"):
             print("'caught_files.txt' file not found.")
             exit()
 
-        if not exists("models"):
-            mkdir("models/")
+        if not exists("../models"):
+            mkdir("../models/")
 
-        with open("caught_files.txt", "r", encoding="utf-8") as f:
+        with open("../caught_files.txt", "r", encoding="utf-8") as f:
             self.__caught_projects = f.readlines()
 
     @staticmethod

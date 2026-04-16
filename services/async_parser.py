@@ -17,9 +17,9 @@ class Parser:
         self.__last_project_id = requests.get("https://git.engee.com/api/v4/projects?per_page=1&order_by=id&sort=desc").json()[0].get("id")
 
         if self.work_type == WorkType.CHECK_PROJECTS:
-            self.__file_name: str = "checked_projects.txt"
+            self.__file_name: str = "../checked_projects.txt"
         elif self.work_type == WorkType.CATCH_FILES:
-            self.__file_name: str = "caught_files.txt"
+            self.__file_name: str = "../caught_files.txt"
 
     @staticmethod
     async def catch_all_engee_models(session: aiohttp.ClientSession, project_link, project_id: int, branch: str) -> list[str]:
