@@ -4,7 +4,7 @@ import aiohttp
 import asyncio
 import requests
 
-from Deque import Deque
+from collections import deque
 
 class WorkType(Enum):
     CHECK_PROJECTS = "CHECK_PROJECTS"
@@ -13,7 +13,7 @@ class WorkType(Enum):
 class Parser:
     def __init__(self, work_type: WorkType):
         self.work_type: WorkType = work_type
-        self.__projects_WEF: list[str] = []
+        self.__parsed_projects: list[str] = []
         self.__last_project_id = requests.get("https://git.engee.com/api/v4/projects?per_page=1&order_by=id&sort=desc").json()[0].get("id")
 
         if self.work_type == WorkType.CHECK_PROJECTS:
@@ -24,13 +24,13 @@ class Parser:
     @staticmethod
     async def catch_all_engee_models(session: aiohttp.ClientSession, project_link, project_id: int, branch: str) -> list[str]:
         base_url: str = f"https://git.engee.com/api/v4/projects/{project_id}/repository/tree"
-        folders_deque: Deque = Deque()
+        folders_deque: deque[str] = deque()
         engee_models: list = list()
 
-        folders_deque.add_right(" ")  # корень репозитория
+        folders_deque.appendleft(" ")  # корень проверяемого проекта
 
         while folders_deque:
-            current_path: str = folders_deque.pop_left()
+            current_path: str = folders_deque.popleft()
             async with session.get(base_url + "?path=" + current_path) as response:
                 if response.status == 200:
                     tree_data: dict = await response.json()
@@ -39,19 +39,19 @@ class Parser:
                             link: str = f"{project_link}/-/raw/{branch}/{file.get('path')}"
                             engee_models.append(link)
                         if file.get("type") == "tree":
-                            folders_deque.add_right(file.get("path"))
+                            folders_deque.append(file.get("path"))
         return engee_models
 
     @staticmethod
     async def is_engee_in_project(session: aiohttp.ClientSession, project_id: int) -> bool:
         """Ищет по директории проекта файлы формата '.engee', даже в папках внутри."""
         base_url: str = f"https://git.engee.com/api/v4/projects/{project_id}/repository/tree"
-        deque: Deque = Deque()
+        project_deque: deque[str] = deque()
 
-        deque.add_right(" ")  # корень репозитория
+        project_deque.append(" ")  # корень проверяемого проекта
 
-        while deque:
-            current_path: str = deque.pop_left()
+        while project_deque:
+            current_path: str = project_deque.popleft()
             async with session.get(base_url + "?path=" + current_path) as response:
                 if response.status == 200:
                     tree_data: dict = await response.json()
@@ -59,7 +59,7 @@ class Parser:
                         if ".engee" in file.get("name"):
                             return True
                         if file.get("type") == "tree":
-                            deque.add_right(file.get("path"))
+                            project_deque.append(file.get("path"))
         return False
 
     async def fetch_project(self, session: aiohttp.ClientSession, project_id: int) -> list[int] | None:
@@ -93,11 +93,11 @@ class Parser:
             results = await asyncio.gather(*tasks)
             for urls in results:
                 if urls:
-                    self.__projects_WEF.extend(urls)
+                    self.__parsed_projects.extend(urls)
 
         try:
             with open(self.__file_name, mode="w", encoding="utf-8") as output_file:
-                for project_link in self.__projects_WEF:
+                for project_link in self.__parsed_projects:
                     output_file.write(project_link + "\n")
             return f"File '{self.__file_name}' was created"
         except Exception as e:
@@ -105,7 +105,7 @@ class Parser:
 
     def get_links_count(self) -> int:
         """Возвращает количество собранных проектов."""
-        return len(self.__projects_WEF)
+        return len(self.__parsed_projects)
 
 
 if __name__ == "__main__":
