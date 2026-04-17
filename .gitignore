@@ -1,6 +1,2 @@
-# files by parser
-caught_files.txt
-checked_projects.txt
-
-# directory for downloaded files
-/models
+# directory for saving parsing artifacts
+/runs
