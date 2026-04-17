@@ -78,13 +78,13 @@ class Parser:
         if asyncio.iscoroutine(result):
             await result
 
-    async def catch_all_engee_models(
+    async def catch_project(
             self,
             session: aiohttp.ClientSession,
             project_link: str,
             project_id: int,
             branch: str
-    ) -> tuple[str, list[str]]:
+    ) -> Optional[tuple[str, list[str]]]:
         """
         Возвращает кортеж из: ссылки на проект(репозиторий) и всех ссылок на модели `.engee` из проекта.
         :param session: Сессия aiohttp клиента
@@ -113,7 +113,10 @@ class Parser:
                     engee_models.append(link)
                 if file.get("type") == "tree":
                     folders_deque.append(file.get("path"))
-        return project_link, engee_models
+
+        if engee_models:
+            return project_link, engee_models
+        return None
 
     async def fetch_project(
             self,
@@ -146,7 +149,7 @@ class Parser:
         if tree_data is None:
             return None
 
-        return await self.catch_all_engee_models(session, project_link, project_id, current_branch)
+        return await self.catch_project(session, project_link, project_id, current_branch)
 
     async def main(self) -> list[str]:
         """
