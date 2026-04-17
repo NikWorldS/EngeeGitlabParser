@@ -115,7 +115,7 @@ class Parser:
             url: str = f"{base_url}?path={current_path}"
             tree_data: dict = await self.__get_response(session, url)
 
-            if not tree_data:
+            if tree_data is None:
                 continue
 
             for file in tree_data:
@@ -147,7 +147,7 @@ class Parser:
             url: str = f"{base_url}?path={current_path}"
             tree_data: dict = await self.__get_response(session, url)
 
-            if not tree_data:
+            if tree_data is None:
                 continue
 
             for file in tree_data:
@@ -172,7 +172,7 @@ class Parser:
         url: str = f"https://git.engee.com/api/v4/projects/{project_id}"
         data: dict = await self.__get_response(session, url)
 
-        if not data:
+        if data is None:
             return None
         if data.get("visibility") != "public":
             return None
