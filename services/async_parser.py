@@ -1,40 +1,36 @@
-from enum import Enum
+from typing import Optional, Callable
 
 import aiohttp
 import asyncio
 import requests
 
-from typing import Optional, Callable
-
 from collections import deque
 
-class WorkType(Enum):
-    CHECK_PROJECTS = "CHECK_PROJECTS"
-    CATCH_FILES = "CATCH_FILES"
 
 class Parser:
     def __init__(
-        self,
-        work_type: WorkType,
-        max_concurrent_requests: int = 50,
+            self,
+            work_dir: str = "",
+            max_concurrent_requests: int = 50,
     ) -> None:
         """
-        :param work_type: Режим работы
         :param max_concurrent_requests: максимальное количество одновременных запросов
         """
-        self.work_type: WorkType = work_type
+        self.work_dir = work_dir
         self.__max_concurrent_requests = max_concurrent_requests
-        self._on_progress: Callable[[int, int], None] = None
+
+        self._on_progress: Optional[Callable[[int, float], None]] = None
 
         self.__semaphore: Optional[asyncio.Semaphore] = None
         self.__aio_connector: Optional[aiohttp.TCPConnector] = None
 
         self.__parsed_links: list[str] = []
-
-        if self.work_type == WorkType.CHECK_PROJECTS:
-            self.__file_name: str = "../checked_projects.txt"
-        elif self.work_type == WorkType.CATCH_FILES:
-            self.__file_name: str = "../caught_files.txt"
+    @staticmethod
+    def get_last_project_id() -> int:
+        """
+        Возвращает id последнего проекта на Engee gitlab.
+        :return: id последнего проекта"""
+        return requests.get("https://git.engee.com/api/v4/projects?per_page=1&order_by=id&sort=desc").json()[0].get("id")
 
     def set_on_progress(self, on_progress: Callable) -> None:
         """
@@ -45,15 +41,9 @@ class Parser:
 
     def get_links_count(self) -> int:
         """
-        :return: Возвращает количество захваченных проектов.
+        :return: Возвращает количество захваченных ссылок на файлы.
         """
         return len(self.__parsed_links)
-
-    def get_last_project_id(self) -> int:
-        """
-        Возвращает id последнего проекта на Engee gitlab.
-        :return: id последнего проекта"""
-        return requests.get("https://git.engee.com/api/v4/projects?per_page=1&order_by=id&sort=desc").json()[0].get("id")
 
     def get_project_links(self) -> list[str]:
         """
@@ -77,7 +67,7 @@ class Parser:
                     return await response.json()
                 return None
 
-    async def _emit_progress(self, advance: int = 1) -> None:
+    async def _emit_progress(self, advance: float = 1) -> None:
         """
         Вызывает функцию продвижения прогресса для прогресс-бара (если поле заполнено).
         :param advance: Значение продвижения (законченных задач)
@@ -90,19 +80,19 @@ class Parser:
             await result
 
     async def catch_all_engee_models(
-        self,
-        session: aiohttp.ClientSession,
-        project_link: str,
-        project_id: int,
-        branch: str
-    ) -> list[str]:
+            self,
+            session: aiohttp.ClientSession,
+            project_link: str,
+            project_id: int,
+            branch: str
+    ) -> tuple[str, list[str]]:
         """
-        Возвращает ссылки на все модели проекта, в которых есть файлы `.engee` формата.
+        Возвращает кортеж из: ссылки на проект(репозиторий) и всех ссылок на модели `.engee` из проекта.
         :param session: Сессия aiohttp клиента
         :param project_link: ссылка на проверяемый проект
         :param project_id:  id проверяемого проекта
         :param branch: название ветки репозитория
-        :return: лист со ссылками на файлы для скачивания.
+        :return: tuple; кортеж с: ссылкой на проект, все ссылки на файлы `.engee` проекта.
         """
         base_url: str = f"https://git.engee.com/api/v4/projects/{project_id}/repository/tree"
         folders_deque: deque[str] = deque()
@@ -124,44 +114,13 @@ class Parser:
                     engee_models.append(link)
                 if file.get("type") == "tree":
                     folders_deque.append(file.get("path"))
-        return engee_models
-
-    async def is_engee_in_project(
-        self,
-        session: aiohttp.ClientSession,
-        project_id: int
-    ) -> bool:
-        """
-        Возвращает True, если нашёл в директории проекта файлы формата `.engee`.
-        :param session: Сессия aiohttp клиента
-        :param project_id: id проверяемого проекта
-        :return: bool, True (`.engee` есть в репозитории), False (иначе)
-        """
-        base_url: str = f"https://git.engee.com/api/v4/projects/{project_id}/repository/tree"
-        project_deque: deque[str] = deque()
-
-        project_deque.append("")  # корень проверяемого проекта
-
-        while project_deque:
-            current_path: str = project_deque.popleft()
-            url: str = f"{base_url}?path={current_path}"
-            tree_data: dict = await self.__get_response(session, url)
-
-            if tree_data is None:
-                continue
-
-            for file in tree_data:
-                if ".engee" in file.get("name"):
-                    return True
-                if file.get("type") == "tree":
-                    project_deque.append(file.get("path"))
-        return False
+        return project_link, engee_models
 
     async def fetch_project(
-        self,
-        session: aiohttp.ClientSession,
-        project_id: int
-    ) -> Optional[list[int]]:
+            self,
+            session: aiohttp.ClientSession,
+            project_id: int
+    ) -> Optional[tuple[str, list[str]]]:
         """
         Возвращает ссылку на проект/ссылки на скачивание моделей (файлов `.engee`), если он: непустой, публичный,
         исходный пример (исключает примеры на zh-китайском и en-английском языках) в зависимости от выбора.
@@ -188,15 +147,7 @@ class Parser:
         if tree_data is None:
             return None
 
-        if self.work_type == WorkType.CHECK_PROJECTS:
-            has_engee_f = await self.is_engee_in_project(session, project_id)
-            if has_engee_f:
-                return [project_link]
-
-        elif self.work_type == WorkType.CATCH_FILES:
-            return await self.catch_all_engee_models(session, project_link, project_id, current_branch)
-
-        return None
+        return await self.catch_all_engee_models(session, project_link, project_id, current_branch)
 
     async def main(self) -> list[str]:
         """
@@ -210,35 +161,36 @@ class Parser:
                 asyncio.create_task(self.fetch_project(session, project_id))
                 for project_id in range(0, self.get_last_project_id())
             ]
+            caught_projects_file = open(self.work_dir + "/caught_projects.txt", "w", encoding="utf-8")
+            caught_models_file = open(self.work_dir + "/caught_models.txt", "w", encoding="utf-8")
 
-            with open(self.__file_name, mode="w", encoding="utf-8") as output_file:
-                for task in asyncio.as_completed(tasks):
-                    urls = await task
-                    if urls:
-                        self.__parsed_links.extend(urls)
-                        for url in urls:
-                            output_file.write(f"{url}\n")
-                        output_file.flush()
+            for task in asyncio.as_completed(tasks):
+                response = await task
+                if response:
+                    project_link, model_links = response
+                    if project_link:
+                        caught_projects_file.write(project_link + "\n")
+                    caught_projects_file.flush()
 
-                    await self._emit_progress(1)
+                    if model_links:
+                        self.__parsed_links.extend(model_links)
+                        for model_link in model_links:
+                            caught_models_file.write(model_link + "\n")
+                    caught_models_file.flush()
+
+                await self._emit_progress(1)
+
+        caught_projects_file.close()
+        caught_models_file.close()
 
         return self.get_project_links()
 
 
 if __name__ == "__main__":
     import time
-    user_input: str = input("Choose type of work for parser (enter a number):\n1. CHECK PROJECTS - for catching link to PROJECTS\n2. CATCH FILES - for catching links to FILES\n")
-    if user_input == "1":
-        work_type: WorkType = WorkType.CHECK_PROJECTS
-    elif user_input == "2":
-        work_type: WorkType = WorkType.CATCH_FILES
-    else:
-        print("Invalid work type")
-        exit()
-    print("Current work type: ", work_type)
     print("Parsing process started...\n")
 
-    parser = Parser(work_type)
+    parser = Parser()
 
     start = time.perf_counter()
 
