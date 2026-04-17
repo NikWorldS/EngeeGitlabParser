@@ -43,9 +43,10 @@ def make_progress_callback(progress: Progress, task_id: TaskID):
         progress.update(task_id=task_id, advance=advance)
     return update_progress
 
-def __create_dir(dir_path) -> None:
+def __create_dir(dir_path: str) -> None:
     try:
         os.mkdir(dir_path)
+        os.mkdir(dir_path + "/models")
     except FileExistsError:
         pass
 
@@ -53,7 +54,7 @@ def get_current_run_dir_path() -> str:
     """
     :return: Путь к папке текущего запуска для сохранения файлов
     """
-    datetime_now = datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    datetime_now = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     dir_path = f"{BASE_RUNS_DIRECTORY}/{datetime_now}"
     __create_dir(dir_path)
     return dir_path
@@ -75,35 +76,40 @@ async def main():
     setup()
     run_dir_path = get_current_run_dir_path()
 
-    parser = Parser()
-    # downloader = Downloader(
-    #     work_dir=run_dir_path,
-    # )
+    parser = Parser(
+        work_dir=run_dir_path,
+    )
+    downloader = Downloader(
+        work_dir=run_dir_path,
+    )
 
     parser_task_id = progress.add_task(
-        "[cyan]Parsing Engee Project...[/cyan]",
+        "[cyan]Parsing repositories...[/cyan]",
         total=parser.get_last_project_id()
     )
     parser.set_on_progress(make_progress_callback(progress, parser_task_id))
 
-    console.log("Parsing process started...")
+    links = await parser.main()
+    downloader.set_file_links(links)
+    progress.update(
+        task_id=parser_task_id,
+        completed=parser.get_last_project_id(),
+        description=f"[green]Parsing completed ([white]{len(links)}[/white] files found).[/green]",
+    )
 
-    result = await parser.main()
+    downloader_task_id = progress.add_task(
+        "[cyan]Downloading Engee models...[/cyan]",
+        total=downloader.get_links_count(),
+    )
+    downloader.set_on_progress(make_progress_callback(progress, downloader_task_id))
 
-    console.log(f"Project parsing ended...")
-    console.log(f"Caught links: {parser.get_links_count()}")
-
-    # downloader_task_id = progress.add_task(
-    #     "[cyan]Downloading Engee Project...[/cyan]",
-    #     total=downloader.get_links_count(),
-    # )
-    # downloader.set_on_progress(make_progress_callback(progress, downloader_task_id))
-    #
-    # console.log("Downloading process started...")
-    # result = await downloader.main()
-    # console.log(f"Project download ended...")
+    result = await downloader.main()
+    progress.update(
+        task_id=downloader_task_id,
+        completed=downloader.get_links_count(),
+        description=f"[green]Downloading completed.[/green]",
+    )
     progress.stop()
-
 
 if __name__ == "__main__":
     asyncio.run(main())

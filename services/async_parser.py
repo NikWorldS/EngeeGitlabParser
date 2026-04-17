@@ -10,7 +10,7 @@ from collections import deque
 class Parser:
     def __init__(
             self,
-            work_dir: str = "",
+            work_dir: str = ".",
             max_concurrent_requests: int = 50,
     ) -> None:
         """
@@ -22,7 +22,6 @@ class Parser:
         self._on_progress: Optional[Callable[[int, float], None]] = None
 
         self.__semaphore: Optional[asyncio.Semaphore] = None
-        self.__aio_connector: Optional[aiohttp.TCPConnector] = None
 
         self.__parsed_links: list[str] = []
     @staticmethod
@@ -32,7 +31,7 @@ class Parser:
         :return: id последнего проекта"""
         return requests.get("https://git.engee.com/api/v4/projects?per_page=1&order_by=id&sort=desc").json()[0].get("id")
 
-    def set_on_progress(self, on_progress: Callable) -> None:
+    def set_on_progress(self, on_progress: Callable[[int, float], None]) -> None:
         """
         Устанавливает значение поля `_on_progress`, хранит функцию обновления прогресса
         :param on_progress: функция обновления прогресса
