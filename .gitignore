@@ -1,2 +1,5 @@
 # directory for saving parsing artifacts
 /runs
+
+# environment variables (API keys)
+.env
