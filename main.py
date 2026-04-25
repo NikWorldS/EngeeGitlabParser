@@ -1,6 +1,6 @@
+from datetime import datetime
 import argparse
 import asyncio
-from datetime import datetime
 import os
 
 from rich.console import Console
@@ -16,10 +16,11 @@ from rich.progress import (
 
 from services.async_parser import Parser
 from services.async_downloader import Downloader
+from services.converter import convert_models, get_api_key, ConversionResult
 
-DEFAULT_DOWNLOAD_OPTION = False
-DEFAULT_SUMMARIZE_OPTION = False
+DEFAULT_DESCRIBE_OPTION = False
 BASE_RUNS_DIRECTORY = "./runs"
+
 
 def parse_args() -> argparse.Namespace:
     arg_parser = argparse.ArgumentParser(
@@ -27,9 +28,10 @@ def parse_args() -> argparse.Namespace:
     )
     arg_parser.add_argument(
         "-d",
-        "--download",
-        type=bool,
-        help=f"Downloads files from gitlab if `True` (on default: {DEFAULT_SUMMARIZE_OPTION})."
+        "--describe-option",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_DESCRIBE_OPTION,
+        help=f"Describing downloaded models if `True` [-d], skip describe step if `False` [--no-d] (on default: {DEFAULT_DESCRIBE_OPTION})."
     )
 
     return arg_parser.parse_args()
@@ -47,6 +49,7 @@ def __create_dir(dir_path: str) -> None:
     try:
         os.mkdir(dir_path)
         os.mkdir(dir_path + "/models")
+        os.mkdir(dir_path + "/mds")
     except FileExistsError:
         pass
 
@@ -58,6 +61,14 @@ def get_current_run_dir_path() -> str:
     dir_path = f"{BASE_RUNS_DIRECTORY}/{datetime_now}"
     __create_dir(dir_path)
     return dir_path
+
+def _count_models(models_dir: str) -> int:
+    if not os.path.exists(models_dir):
+        return 0
+    return sum(
+        1 for f in os.listdir(models_dir)
+        if f.lower().endswith(('.zip', '.engee'))
+    )
 
 async def main():
     console = Console()
@@ -71,6 +82,14 @@ async def main():
         TimeRemainingColumn(),
         console=console,
     )
+
+    args = parse_args()
+    describe_option = args.describe_option
+
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[yellow]OPENROUTER_API_KEY не найден — шаг конвертации в дальнейшем будет пропущен.[/yellow]")
+
     progress.start()
 
     setup()
@@ -103,13 +122,48 @@ async def main():
     )
     downloader.set_on_progress(make_progress_callback(progress, downloader_task_id))
 
-    result = await downloader.main()
+    await downloader.main()
     progress.update(
         task_id=downloader_task_id,
         completed=downloader.get_links_count(),
         description=f"[green]Downloading completed.[/green]",
     )
+
+    models_dir = run_dir_path + "/models"
+    mds_dir = run_dir_path + "/mds"
+    models_count = _count_models(models_dir)
+
+    if not api_key or not describe_option:
+        progress.stop()
+        console.print("[yellow]Пропуск этапа конвертации...[/yellow]")
+        console.print(f"[dim]Модели сохранены в: {os.path.abspath(models_dir)}[/dim]")
+        return
+
+    converter_task_id = progress.add_task(
+        "[cyan]Converting models to Markdown...[/cyan]",
+        total=max(models_count, 1),
+    )
+
+    result: ConversionResult = convert_models(
+        input_dir=models_dir,
+        output_dir=mds_dir,
+        api_key=api_key,
+        on_progress=make_progress_callback(progress, converter_task_id),
+    )
+
+    progress.update(
+        task_id=converter_task_id,
+        completed=models_count,
+        description=(
+            f"[green]Converting completed "
+            f"([white]{result.success}[/white] ok, "
+            f"[dim]{result.skipped}[/dim] skipped, "
+            f"[red]{result.failed}[/red] failed).[/green]"
+        ),
+    )
+
     progress.stop()
+    return
 
 if __name__ == "__main__":
     asyncio.run(main())
