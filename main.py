@@ -1,6 +1,6 @@
+from datetime import datetime
 import argparse
 import asyncio
-from datetime import datetime
 import os
 
 from rich.console import Console
@@ -18,9 +18,9 @@ from services.async_parser import Parser
 from services.async_downloader import Downloader
 from services.converter import convert_models, get_api_key, ConversionResult
 
-DEFAULT_DOWNLOAD_OPTION = False
-DEFAULT_SUMMARIZE_OPTION = False
+DEFAULT_DESCRIBE_OPTION = False
 BASE_RUNS_DIRECTORY = "./runs"
+
 
 def parse_args() -> argparse.Namespace:
     arg_parser = argparse.ArgumentParser(
@@ -28,9 +28,10 @@ def parse_args() -> argparse.Namespace:
     )
     arg_parser.add_argument(
         "-d",
-        "--download",
-        type=bool,
-        help=f"Downloads files from gitlab if `True` (on default: {DEFAULT_SUMMARIZE_OPTION})."
+        "--describe-option",
+        action=argparse.BooleanOptionalAction,
+        default=DEFAULT_DESCRIBE_OPTION,
+        help=f"Describing downloaded models if `True` [-d], skip describe step if `False` [--no-d] (on default: {DEFAULT_DESCRIBE_OPTION})."
     )
 
     return arg_parser.parse_args()
@@ -81,6 +82,14 @@ async def main():
         TimeRemainingColumn(),
         console=console,
     )
+
+    args = parse_args()
+    describe_option = args.describe_option
+
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[yellow]OPENROUTER_API_KEY не найден — шаг конвертации в дальнейшем будет пропущен.[/yellow]")
+
     progress.start()
 
     setup()
@@ -124,10 +133,9 @@ async def main():
     mds_dir = run_dir_path + "/mds"
     models_count = _count_models(models_dir)
 
-    api_key = get_api_key()
-    if not api_key:
+    if not api_key or not describe_option:
         progress.stop()
-        console.print("[yellow]OPENROUTER_API_KEY не найден — шаг конвертации пропущен.[/yellow]")
+        console.print("[yellow]Пропуск этапа конвертации...[/yellow]")
         console.print(f"[dim]Модели сохранены в: {os.path.abspath(models_dir)}[/dim]")
         return
 
@@ -155,6 +163,7 @@ async def main():
     )
 
     progress.stop()
+    return
 
 if __name__ == "__main__":
     asyncio.run(main())
